@@ -1,7 +1,7 @@
 <#
 Claude Code + DeepSeek V4 Pro[1m] 全自动安装
 强制 PowerShell 运行 | 智能检测 Git/Node | 自动修复环境变量
-最终修复版 v3: 消除 PATH 重复刷新、网络安全风险、版本检查
+最终修复版 v4: 修复 API Key 输入循环、环境变量注入、执行策略
 #>
 
 # 检查 PowerShell 版本（Issue #6 修复）
@@ -177,13 +177,14 @@ catch {
     Write-Host "❌ 环境变量配置失败: $_" -F Red
 }
 
-# 5. 弹窗输入 API Key
+# 5. 弹窗输入 API Key（✅ 修复版本 v4）
 Write-Host "`n🔑 正在弹出 API Key 输入窗口..." -F Yellow
 $apiKey = $null
 $maxRetries = 3
 $retry = 0
+$apiKeyValid = $false
 
-while ($retry -lt $maxRetries) {
+while ($retry -lt $maxRetries -and -not $apiKeyValid) {
     $apiKey = [Microsoft.VisualBasic.Interaction]::InputBox(
         "请输入 DeepSeek API Key（sk-开头）`n`n获取地址: https://platform.deepseek.com/api_keys",
         "DeepSeek API Key",
@@ -205,17 +206,17 @@ while ($retry -lt $maxRetries) {
     }
     else {
         Write-Host "✅ API Key 格式正确" -F Green
-        break
+        $apiKeyValid = $true
     }
 }
 
-if ($retry -eq $maxRetries) {
+if (-not $apiKeyValid) {
     Write-Host "`n❌ 超出重试次数，安装中止" -F Red
     pause
     exit 1
 }
 
-# 6. 写入配置（✅ 已修复 [1m] 括号解析错误）
+# 6. 写入配置（✅ 已修复 API Key 注入、括号转义）
 Write-Host "`n📝 写入 PowerShell 配置..." -F Yellow
 try {
     $profilePath = $PROFILE
@@ -225,11 +226,11 @@ try {
         New-Item -Path $profileDir -ItemType Directory -Force | Out-Null
     }
     
-    # ✅ 这里是关键修复：deepseek-v4-pro`[1m`] 转义括号
+    # ✅ 关键修复：使用单引号避免变量展开，安全转义 API Key
     $cfg = @"
 # Claude Code → DeepSeek V4 Pro[1m]
 `$env:ANTHROPIC_BASE_URL = 'https://api.deepseek.com/anthropic'
-`$env:ANTHROPIC_AUTH_TOKEN = '$apiKey'
+`$env:ANTHROPIC_AUTH_TOKEN = '$($apiKey -replace "'", "''")'
 `$env:ANTHROPIC_MODEL = 'deepseek-v4-pro`[1m`]'
 `$env:API_TIMEOUT_MS = '600000'
 `$env:CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = '1'
