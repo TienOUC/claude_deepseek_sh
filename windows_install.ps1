@@ -1,7 +1,6 @@
 ﻿<#
 Claude Code + DeepSeek V4 Pro[1m] 全自动安装
-强制 PowerShell 运行 | 智能检测 Git/Node | 自动修复环境变量
-最终修复版 v4: 修复 API Key 输入循环、环境变量注入、执行策略
+智能检测 Git/Node | 自动修复环境变量
 #>
 
 # Check PowerShell version (Issue #6 fix)
