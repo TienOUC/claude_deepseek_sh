@@ -114,25 +114,99 @@ catch {
     Write-Host "ERROR: Node.js detection failed: $_" -F Red
 }
 
-# 3. Install Claude CLI
-Write-Host "`nInstalling Claude Code CLI..." -F Yellow
-try {
-    $installUri = "https://claude.ai/install.ps1"
-    Write-Host "   Downloading installation script from $installUri..." -F Gray
-    
-    $installScript = irm $installUri -TimeoutSec 30 -ErrorAction Stop
-    
-    if ($installScript -and $installScript.Length -gt 100) {
-        Write-Host "   Installation script downloaded, executing now..." -F Gray
-        Invoke-Expression $installScript
-        Write-Host "SUCCESS: Claude Code installation completed" -F Green
-    }
-    else {
-        Write-Host "WARNING: Claude installation script is abnormal, please check network" -F Yellow
+function Update-SessionPathForClaude {
+    $machinePath = [Environment]::GetEnvironmentVariable("Path", "Machine")
+    $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+    $env:Path = "$machinePath;$userPath"
+    $npmBin = Join-Path $env:APPDATA "npm"
+    if ((Test-Path $npmBin) -and ($env:Path -notlike "*${npmBin}*")) {
+        $env:Path = "$npmBin;$env:Path"
     }
 }
-catch {
-    Write-Host "WARNING: Claude installation failed: $_" -F Yellow
+
+function Test-ClaudeCommandAvailable {
+    Update-SessionPathForClaude
+    return $null -ne (Get-Command claude -ErrorAction SilentlyContinue)
+}
+
+# 3. Install Claude CLI（官方脚本会请求 downloads.claude.ai，国内常被拒；失败则 winget / npm）
+Write-Host "`nInstalling Claude Code CLI..." -F Yellow
+$claudeReady = Test-ClaudeCommandAvailable
+
+if ($claudeReady) {
+    Write-Host "SUCCESS: claude 已在 PATH 中，跳过安装" -F Green
+}
+else {
+    # 3a 官方在线脚本（内部仍会拉取 downloads.claude.ai）
+    Write-Host "   [1/3] 尝试官方 install.ps1 ..." -F Gray
+    try {
+        $installUri = "https://claude.ai/install.ps1"
+        $installScript = Invoke-RestMethod -Uri $installUri -TimeoutSec 60 -ErrorAction Stop
+        if ($installScript -and $installScript.Length -gt 100) {
+            Invoke-Expression $installScript
+        }
+    }
+    catch {
+        Write-Host "   官方脚本失败: $_" -F DarkYellow
+    }
+    Update-SessionPathForClaude
+    $claudeReady = Test-ClaudeCommandAvailable
+
+    # 3b winget（走微软源，不依赖 downloads.claude.ai）
+    if (-not $claudeReady) {
+        Write-Host "   [2/3] 尝试 winget 安装 Anthropic.ClaudeCode ..." -F Gray
+        $wg = Get-Command winget -ErrorAction SilentlyContinue
+        if ($wg) {
+            try {
+                $wingetArgs = @(
+                    "install", "--id", "Anthropic.ClaudeCode", "-e",
+                    "--accept-source-agreements", "--accept-package-agreements"
+                )
+                & winget @wingetArgs
+                if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) {
+                    Write-Host "   winget 退出码: $LASTEXITCODE（若已安装过可能仍可忽略）" -F DarkYellow
+                }
+            }
+            catch {
+                Write-Host "   winget 失败: $_" -F DarkYellow
+            }
+        }
+        else {
+            Write-Host "   未找到 winget，跳过" -F DarkYellow
+        }
+        Update-SessionPathForClaude
+        $claudeReady = Test-ClaudeCommandAvailable
+    }
+
+    # 3c npm 全局包（走 npm registry，可配国内镜像）
+    if (-not $claudeReady) {
+        Write-Host "   [3/3] 尝试 npm: @anthropic-ai/claude-code ..." -F Gray
+        if (Get-Command npm -ErrorAction SilentlyContinue) {
+            try {
+                & npm install -g @anthropic-ai/claude-code
+            }
+            catch {
+                Write-Host "   npm 失败: $_" -F DarkYellow
+            }
+            Update-SessionPathForClaude
+            $claudeReady = Test-ClaudeCommandAvailable
+        }
+        else {
+            Write-Host "   未找到 npm，请先安装 Node.js 后再试" -F DarkYellow
+        }
+    }
+
+    if ($claudeReady) {
+        Write-Host "SUCCESS: 已检测到 claude 命令，CLI 安装成功" -F Green
+    }
+    else {
+        Write-Host "FAILED: 未能安装或找不到 Claude Code CLI（claude 命令仍不可用）" -F Red
+        Write-Host "   常见原因: 无法访问 downloads.claude.ai（防火墙/地区网络）" -F Yellow
+        Write-Host "   可手动执行其一:" -F Yellow
+        Write-Host "     winget install --id Anthropic.ClaudeCode -e" -F White
+        Write-Host "     npm install -g @anthropic-ai/claude-code" -F White
+        Write-Host "   配置好代理/VPN 后也可重新运行本脚本。" -F Yellow
+    }
 }
 
 # 4. Auto-fix PATH
@@ -191,10 +265,10 @@ while ($retry -lt $maxRetries -and -not $apiKeyValid) {
         "sk-"
     )
     
-    if ($null -eq $apiKey -or $apiKey -eq "") {
-        Write-Host "ERROR: Input cancelled or empty" -F Red
-        pause
-        exit 1
+    if ([string]::IsNullOrWhiteSpace($apiKey)) {
+        $retry++
+        Write-Host "ERROR: 已取消或为空，请重试（$retry / $maxRetries）" -F Red
+        continue
     }
     
     if ($apiKey -notlike "sk-*") {
@@ -248,13 +322,21 @@ catch {
 }
 
 # Completion
-Write-Host "`n=============================================" -F Green
-Write-Host "SUCCESS: Installation completed!" -F Green
-Write-Host "=============================================" -F Green
+Write-Host "`n=============================================" -F Cyan
+if ($claudeReady) {
+    Write-Host "SUCCESS: 安装与配置已完成！" -F Green
+}
+else {
+    Write-Host "PARTIAL: DeepSeek 环境变量已写入，但本机未检测到 claude 命令" -F Yellow
+    Write-Host "请先解决 CLI 安装（见上文 FAILED 提示），再重新打开终端运行 claude。" -F Yellow
+}
+Write-Host "=============================================" -F Cyan
 Write-Host ""
-Write-Host "Next Steps:" -F Cyan
-Write-Host "   1. Close and reopen PowerShell terminal" -F White
-Write-Host "   2. Run command: claude" -F White
-Write-Host "   3. Start using Claude Code + DeepSeek!" -F White
+Write-Host "后续步骤:" -F Cyan
+Write-Host "   1. 关闭并重新打开 PowerShell" -F White
+Write-Host "   2. 运行: claude" -F White
+if (-not $claudeReady) {
+    Write-Host "   （若提示找不到命令，请先执行 npm i -g @anthropic-ai/claude-code 或 winget 安装）" -F DarkYellow
+}
 Write-Host ""
 pause
