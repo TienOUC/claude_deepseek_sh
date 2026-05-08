@@ -1,121 +1,94 @@
 <#
-Claude Code 全自动安装 + 自动适配DeepSeek V4 Pro[1m]
-特性：
-1. 智能检测 Git/Node 已安装且版本达标则跳过
-2. 自动修复 Claude 环境变量PATH，永久生效
-3. Windows 图形弹窗输入 DeepSeek API Key
-4. 支持任意目录存放，双击BAT即可运行
+Claude Code + DeepSeek V4 Pro[1m] 全自动安装
+强制 PowerShell 运行 | 智能检测 Git/Node | 自动修复环境变量
 #>
 Add-Type -AssemblyName Microsoft.VisualBasic
 Clear-Host
 
-# Claude Code 最低要求 Node >= 18.17.0
 $nodeMinVer = [version]"18.17.0"
 
-Write-Host "=============================================" -ForegroundColor Cyan
-Write-Host " Windows Claude Code 全自动安装 DeepSeek版 " -ForegroundColor Cyan
-Write-Host "=============================================" -ForegroundColor Cyan
+Write-Host "=============================================" -F Cyan
+Write-Host "  Claude Code 全自动安装 · DeepSeek 专用版  " -F Cyan
+Write-Host "=============================================" -F Cyan
 Write-Host ""
 
-#region 1. 检测并安装 Git
-Write-Host "🔍 正在检测 Git..." -ForegroundColor Yellow
-$gitCmd = Get-Command git -ErrorAction SilentlyContinue
-if ($gitCmd) {
-    Write-Host "✅ Git 已存在，跳过安装" -ForegroundColor Green
+# 1. 检测 Git
+Write-Host "🔍 检测 Git..." -F Yellow
+if (Get-Command git -ErrorAction SilentlyContinue) {
+    Write-Host "✅ Git 已安装" -F Green
 }
 else {
-    Write-Host "🔽 未检测到 Git，开始自动安装..." -ForegroundColor Yellow
-    winget install Git.Git -s winget
+    Write-Host "🔽 安装 Git..." -F Yellow
+    winget install Git.Git -s winget --accept-source-agreements --accept-package-agreements
 }
-#endregion
 
-#region 2. 检测并安装 Node.js
-Write-Host "`n🔍 正在检测 Node.js (最低要求 $nodeMinVer)..." -ForegroundColor Yellow
-$nodeCmd = Get-Command node -ErrorAction SilentlyContinue
-if ($nodeCmd) {
-    $verRaw = & node -v
-    if ($verRaw -match 'v(\d+\.\d+\.\d+)') {
-        $currVer = [version]$matches[1]
-        Write-Host "当前 Node 版本：$currVer"
-        if ($currVer -ge $nodeMinVer) {
-            Write-Host "✅ Node 版本达标，跳过安装" -ForegroundColor Green
+# 2. 检测 Node
+Write-Host "`n🔍 检测 Node.js (最低版本: $nodeMinVer)..." -F Yellow
+if (Get-Command node -ErrorAction SilentlyContinue) {
+    $v = & node -v
+    if ($v -match 'v(\d+\.\d+\.\d+)') {
+        $curr = [version]$matches[1]
+        Write-Host "当前 Node 版本: $curr"
+        if ($curr -ge $nodeMinVer) {
+            Write-Host "✅ Node 版本符合" -F Green
         }
         else {
-            Write-Host "❌ Node 版本过低，自动安装 LTS 新版..." -ForegroundColor Red
-            winget install OpenJS.NodeJS.LTS -s winget
+            winget install OpenJS.NodeJS.LTS -s winget --accept-source-agreements --accept-package-agreements
         }
     }
 }
 else {
-    Write-Host "🔽 未检测到 Node.js，开始自动安装..." -ForegroundColor Yellow
-    winget install OpenJS.NodeJS.LTS -s winget
+    winget install OpenJS.NodeJS.LTS -s winget --accept-source-agreements --accept-package-agreements
 }
-#endregion
 
-# 刷新系统环境变量
-refreshenv | Out-Null
+# 刷新环境变量
+if (Get-Command refreshenv -ErrorAction SilentlyContinue) { refreshenv | Out-Null }
 
-#region 3. 安装 Claude Code CLI
-Write-Host "`n🔽 开始安装 Claude Code CLI..." -ForegroundColor Yellow
+# 3. 安装 Claude CLI
+Write-Host "`n🔽 安装 Claude Code CLI..." -F Yellow
 irm https://claude.ai/install.ps1 | iex
-Write-Host "✅ Claude Code CLI 安装完成" -ForegroundColor Green
-#endregion
+Write-Host "✅ Claude Code 安装完成" -F Green
 
-#region 4. 自动修复 PATH 环境变量（永久用户级）
-$claudeBinPath = Join-Path $env:USERPROFILE ".claude\local"
-$userEnvPath = [Environment]::GetEnvironmentVariable("PATH", "User")
+# 4. 自动修复 PATH
+$claudePath = Join-Path $env:USERPROFILE ".claude\local"
+$userPath = [Environment]::GetEnvironmentVariable("PATH", "User")
 
-if (-not $userEnvPath.Contains($claudeBinPath)) {
-    $newUserPath = "$userEnvPath;$claudeBinPath"
-    [Environment]::SetEnvironmentVariable("PATH", $newUserPath, "User")
-    Write-Host "`n✅ 已自动写入 Claude 到用户环境变量 PATH" -ForegroundColor Green
+if (-not $userPath.Contains($claudePath)) {
+    [Environment]::SetEnvironmentVariable("PATH", "$userPath;$claudePath", "User")
+    Write-Host "✅ 已添加 Claude 到环境变量" -F Green
 }
 
-# 立即刷新当前终端PATH
 $env:PATH = [Environment]::GetEnvironmentVariable("PATH","User") + ";" + [Environment]::GetEnvironmentVariable("PATH","Machine")
-#endregion
 
-#region 5. 弹窗图形输入 DeepSeek API Key
-Write-Host "`n🔑 即将弹出窗口，请输入 DeepSeek API Key..." -ForegroundColor Yellow
+# 5. 弹窗输入 API Key
+Write-Host "`n🔑 正在弹出 API Key 输入窗口..." -F Yellow
 $apiKey = [Microsoft.VisualBasic.Interaction]::InputBox(
-    "请输入你的 DeepSeek sk- 开头 API 密钥",
-    "DeepSeek API Key 配置",
+    "请输入 DeepSeek API Key（sk-开头）",
+    "DeepSeek API Key",
     "sk-"
 )
 
-# 校验密钥格式
-if ([string]::IsNullOrWhiteSpace($apiKey) -or $apiKey -notlike "sk-*") {
-    Write-Host "`n❌ API Key 为空或格式错误，退出配置！" -ForegroundColor Red
+if (-not $apiKey -or $apiKey -notlike "sk-*") {
+    Write-Host "`n❌ 无效 API Key" -F Red
     pause
     exit
 }
-#endregion
 
-#region 6. 写入 PowerShell 永久配置
-$baseUrl = "https://api.deepseek.com/anthropic"
-$modelName = 'deepseek-v4-pro[1m]'
-$timeoutMs = "600000"
+# 6. 写入配置
 $profilePath = $PROFILE
-
-$profileContent = @"
-# 自动配置 Claude Code 接入 DeepSeek V4 Pro[1m]
-`$env:ANTHROPIC_BASE_URL = "$baseUrl"
+$cfg = @"
+# Claude Code → DeepSeek V4 Pro[1m]
+`$env:ANTHROPIC_BASE_URL = "https://api.deepseek.com/anthropic"
 `$env:ANTHROPIC_AUTH_TOKEN = "$apiKey"
-`$env:ANTHROPIC_MODEL = "$modelName"
-`$env:API_TIMEOUT_MS = "$timeoutMs"
+`$env:ANTHROPIC_MODEL = 'deepseek-v4-pro[1m]'
+`$env:API_TIMEOUT_MS = "600000"
 `$env:CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = "1"
 "@
 
-if (-not (Test-Path $profilePath)) {
-    New-Item -Path $profilePath -ItemType File -Force | Out-Null
-}
-Add-Content -Path $profilePath -Value "`n$profileContent" -Encoding utf8
-#endregion
+if (-not (Test-Path $profilePath)) { New-Item -Path $profilePath -Type File -Force | Out-Null }
+Add-Content -Path $profilePath -Value "`n$cfg" -Encoding UTF8
 
-# 完成提示
-Write-Host "`n=============================================" -ForegroundColor Green
-Write-Host "✅ 全部安装 + 环境变量 + DeepSeek 配置完成！" -ForegroundColor Green
-Write-Host "🤖 默认模型：deepseek-v4-pro[1m]" -ForegroundColor Cyan
-Write-Host "📌 关闭当前窗口，新开终端输入 claude 即可使用" -ForegroundColor Yellow
-Write-Host "=============================================" -ForegroundColor Green
+Write-Host "`n=============================================" -F Green
+Write-Host "✅ 安装完成！关闭终端重新输入 claude 即可使用" -F Green
+Write-Host "=============================================" -F Green
 pause
