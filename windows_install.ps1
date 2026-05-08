@@ -1,6 +1,10 @@
 <#
 Claude Code 全自动安装 + 自动适配DeepSeek V4 Pro[1m]
-修复版：解决乱码和括号不匹配问题
+特性：
+1. 智能检测 Git/Node 已安装且版本达标则跳过
+2. 自动修复 Claude 环境变量PATH，永久生效
+3. Windows 图形弹窗输入 DeepSeek API Key
+4. 支持任意目录存放，双击BAT即可运行
 #>
 Add-Type -AssemblyName Microsoft.VisualBasic
 Clear-Host
@@ -89,7 +93,7 @@ if ([string]::IsNullOrWhiteSpace($apiKey) -or $apiKey -notlike "sk-*") {
 
 #region 6. 写入 PowerShell 永久配置
 $baseUrl = "https://api.deepseek.com/anthropic"
-$modelName = "deepseek-v4-pro`[1m`]"
+$modelName = 'deepseek-v4-pro[1m]'
 $timeoutMs = "600000"
 $profilePath = $PROFILE
 
@@ -97,7 +101,7 @@ $profileContent = @"
 # 自动配置 Claude Code 接入 DeepSeek V4 Pro[1m]
 `$env:ANTHROPIC_BASE_URL = "$baseUrl"
 `$env:ANTHROPIC_AUTH_TOKEN = "$apiKey"
-`$env:ANTHROPIC_MODEL = "$modelName"
+`$env:ANTHROPIC_MODEL = '$modelName'
 `$env:API_TIMEOUT_MS = "$timeoutMs"
 `$env:CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = "1"
 "@
