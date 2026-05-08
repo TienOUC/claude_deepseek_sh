@@ -12,7 +12,7 @@
 # 3. 获取 DeepSeek API Key
 1. 登录：https://platform.deepseek.com 注册账号
 2. 进入「API Keys」→ 新建密钥
-3. 复制 sk-xxxxxx 格式密钥，保存好
-
-   
+3. 复制 sk-xxxxxx 格式密钥，保存好   
 ![示例](https://ibb.co/5gmJWx69)
+
+# 4. 在终端/PowerShell中输入 claude 使用
