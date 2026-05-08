@@ -1,7 +1,12 @@
 <#
 Claude Code + DeepSeek V4 Pro[1m] 全自动安装
 强制 PowerShell 运行 | 智能检测 Git/Node | 自动修复环境变量
+改进版：完整错误处理 + 多系统支持
 #>
+
+# 严格模式：捕获所有错误
+$ErrorActionPreference = "Stop"
+
 Add-Type -AssemblyName Microsoft.VisualBasic
 Clear-Host
 
@@ -12,71 +17,201 @@ Write-Host "  Claude Code 全自动安装 · DeepSeek 专用版  " -F Cyan
 Write-Host "=============================================" -F Cyan
 Write-Host ""
 
-# 1. 检测 Git
-Write-Host "🔍 检测 Git..." -F Yellow
-if (Get-Command git -ErrorAction SilentlyContinue) {
-    Write-Host "✅ Git 已安装" -F Green
+# 0. 检查执行策略
+Write-Host "🔍 检查 PowerShell 执行策略..." -F Yellow
+$policy = Get-ExecutionPolicy -Scope CurrentUser
+if ($policy -eq "Restricted") {
+    Write-Host "⚠️  当前执行策略为 Restricted，尝试修改..." -F Yellow
+    try {
+        Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
+        Write-Host "✅ 执行策略已修改为 RemoteSigned" -F Green
+    }
+    catch {
+        Write-Host "❌ 无法修改执行策略，请以管理员身份运行此脚本" -F Red
+        pause
+        exit 1
+    }
 }
-else {
-    Write-Host "🔽 安装 Git..." -F Yellow
-    winget install Git.Git -s winget --accept-source-agreements --accept-package-agreements
+
+# 1. 检测 Git
+Write-Host "`n🔍 检测 Git..." -F Yellow
+try {
+    if (Get-Command git -ErrorAction SilentlyContinue) {
+        Write-Host "✅ Git 已安装" -F Green
+    }
+    else {
+        Write-Host "🔽 安装 Git..." -F Yellow
+        $osVersion = [System.Environment]::OSVersion.Version
+        
+        # Windows 11 或更高版本使用 winget
+        if ($osVersion.Major -ge 10 -and $osVersion.Build -ge 22000) {
+            try {
+                winget install Git.Git -s winget --accept-source-agreements --accept-package-agreements
+                Write-Host "✅ Git 已通过 winget 安装" -F Green
+            }
+            catch {
+                Write-Host "⚠️  winget 安装失败，请手动从 https://git-scm.com 下载安装" -F Yellow
+            }
+        }
+        else {
+            Write-Host "⚠️  Windows 10 或更早版本，请手动从 https://git-scm.com 下载安装 Git" -F Yellow
+            Write-Host "   安装后请重新运行此脚本" -F Yellow
+        }
+    }
+}
+catch {
+    Write-Host "❌ Git 检测出错: $_" -F Red
 }
 
 # 2. 检测 Node
 Write-Host "`n🔍 检测 Node.js (最低版本: $nodeMinVer)..." -F Yellow
-if (Get-Command node -ErrorAction SilentlyContinue) {
-    $v = & node -v
-    if ($v -match 'v(\d+\.\d+\.\d+)') {
-        $curr = [version]$matches[1]
-        Write-Host "当前 Node 版本: $curr"
-        if ($curr -ge $nodeMinVer) {
-            Write-Host "✅ Node 版本符合" -F Green
+try {
+    $needInstall = $true
+    
+    if (Get-Command node -ErrorAction SilentlyContinue) {
+        $v = & node -v 2>$null
+        if ($v -match 'v(\d+\.\d+\.\d+)') {
+            $curr = [version]$matches[1]
+            Write-Host "当前 Node 版本: $curr" -F Cyan
+            if ($curr -ge $nodeMinVer) {
+                Write-Host "✅ Node 版本符合" -F Green
+                $needInstall = $false
+            }
+            else {
+                Write-Host "⚠️  Node 版本过低，需要更新..." -F Yellow
+            }
+        }
+    }
+    
+    if ($needInstall) {
+        Write-Host "🔽 安装/更新 Node.js LTS..." -F Yellow
+        $osVersion = [System.Environment]::OSVersion.Version
+        
+        if ($osVersion.Major -ge 10 -and $osVersion.Build -ge 22000) {
+            try {
+                winget install OpenJS.NodeJS.LTS -s winget --accept-source-agreements --accept-package-agreements
+                Write-Host "✅ Node.js 已通过 winget 安装" -F Green
+            }
+            catch {
+                Write-Host "⚠️  winget 安装失败，请手动从 https://nodejs.org 下载安装" -F Yellow
+            }
         }
         else {
-            winget install OpenJS.NodeJS.LTS -s winget --accept-source-agreements --accept-package-agreements
+            Write-Host "⚠️  请手动从 https://nodejs.org 下载并安装 LTS 版本" -F Yellow
         }
     }
 }
-else {
-    winget install OpenJS.NodeJS.LTS -s winget --accept-source-agreements --accept-package-agreements
+catch {
+    Write-Host "❌ Node 检测出错: $_" -F Red
 }
 
 # 刷新环境变量
-if (Get-Command refreshenv -ErrorAction SilentlyContinue) { refreshenv | Out-Null }
+Write-Host "`n🔄 刷新环境变量..." -F Yellow
+if (Get-Command refreshenv -ErrorAction SilentlyContinue) { 
+    refreshenv | Out-Null
+    Write-Host "✅ 环境变量已刷新" -F Green
+}
 
 # 3. 安装 Claude CLI
 Write-Host "`n🔽 安装 Claude Code CLI..." -F Yellow
-irm https://claude.ai/install.ps1 | iex
-Write-Host "✅ Claude Code 安装完成" -F Green
-
-# 4. 自动修复 PATH
-$claudePath = Join-Path $env:USERPROFILE ".claude\local"
-$userPath = [Environment]::GetEnvironmentVariable("PATH", "User")
-
-if (-not $userPath.Contains($claudePath)) {
-    [Environment]::SetEnvironmentVariable("PATH", "$userPath;$claudePath", "User")
-    Write-Host "✅ 已添加 Claude 到环境变量" -F Green
+try {
+    $installUri = "https://claude.ai/install.ps1"
+    Write-Host "   从 $installUri 下载安装脚本..." -F Gray
+    
+    $installScript = irm $installUri -ErrorAction Stop
+    if ($installScript) {
+        Invoke-Expression $installScript
+        Write-Host "✅ Claude Code 安装完成" -F Green
+    }
+    else {
+        Write-Host "⚠️  Claude 安装脚本为空，请检查网络连接" -F Yellow
+    }
+}
+catch {
+    Write-Host "⚠️  Claude 安装失败: $_" -F Yellow
+    Write-Host "   请稍后手动运行: irm https://claude.ai/install.ps1 | iex" -F Gray
 }
 
-$env:PATH = [Environment]::GetEnvironmentVariable("PATH","User") + ";" + [Environment]::GetEnvironmentVariable("PATH","Machine")
+# 4. 自动修复 PATH
+Write-Host "`n🔧 配置环境变量..." -F Yellow
+try {
+    $claudePath = Join-Path $env:USERPROFILE ".claude\local"
+    $userPath = [Environment]::GetEnvironmentVariable("PATH", "User")
+    
+    # 防止 $userPath 为 null
+    if ($null -eq $userPath) {
+        $userPath = ""
+    }
+    
+    if (-not $userPath.Contains($claudePath)) {
+        [Environment]::SetEnvironmentVariable("PATH", "$userPath;$claudePath", "User")
+        Write-Host "✅ 已添加 Claude 到用户环境变量" -F Green
+    }
+    else {
+        Write-Host "✅ Claude 已在环境变量中" -F Green
+    }
+    
+    # 刷新当前进程的 PATH
+    $machPath = [Environment]::GetEnvironmentVariable("PATH", "Machine")
+    if ($null -eq $machPath) { $machPath = "" }
+    $env:PATH = $userPath + ";" + $machPath
+}
+catch {
+    Write-Host "❌ 环境变量配置失败: $_" -F Red
+}
 
 # 5. 弹窗输入 API Key
 Write-Host "`n🔑 正在弹出 API Key 输入窗口..." -F Yellow
-$apiKey = [Microsoft.VisualBasic.Interaction]::InputBox(
-    "请输入 DeepSeek API Key（sk-开头）",
-    "DeepSeek API Key",
-    "sk-"
-)
+$apiKey = $null
+$maxRetries = 3
+$retry = 0
 
-if (-not $apiKey -or $apiKey -notlike "sk-*") {
-    Write-Host "`n❌ 无效 API Key" -F Red
+while ($retry -lt $maxRetries) {
+    $apiKey = [Microsoft.VisualBasic.Interaction]::InputBox(
+        "请输入 DeepSeek API Key（sk-开头）`n`n获取地址: https://platform.deepseek.com/api_keys",
+        "DeepSeek API Key",
+        "sk-"
+    )
+    
+    if ($null -eq $apiKey -or $apiKey -eq "") {
+        Write-Host "❌ 输入被取消或为空" -F Red
+        pause
+        exit 1
+    }
+    
+    if ($apiKey -notlike "sk-*") {
+        Write-Host "❌ 无效 API Key（必须以 'sk-' 开头）" -F Red
+        $retry++
+        if ($retry -lt $maxRetries) {
+            Write-Host "   剩余尝试次数: $($maxRetries - $retry)" -F Yellow
+        }
+    }
+    else {
+        Write-Host "✅ API Key 格式正确" -F Green
+        break
+    }
+}
+
+if ($retry -eq $maxRetries) {
+    Write-Host "`n❌ 超出重试次数，安装中止" -F Red
     pause
-    exit
+    exit 1
 }
 
 # 6. 写入配置
-$profilePath = $PROFILE
-$cfg = @"
+Write-Host "`n📝 写入 PowerShell 配置..." -F Yellow
+try {
+    $profilePath = $PROFILE
+    $profileDir = Split-Path -Parent $profilePath
+    
+    # 创建配置目录（如果不存在）
+    if (-not (Test-Path $profileDir)) {
+        New-Item -Path $profileDir -ItemType Directory -Force | Out-Null
+        Write-Host "   创建目录: $profileDir" -F Gray
+    }
+    
+    # 创建配置内容
+    $cfg = @"
 # Claude Code → DeepSeek V4 Pro[1m]
 `$env:ANTHROPIC_BASE_URL = "https://api.deepseek.com/anthropic"
 `$env:ANTHROPIC_AUTH_TOKEN = "$apiKey"
@@ -84,11 +219,34 @@ $cfg = @"
 `$env:API_TIMEOUT_MS = "600000"
 `$env:CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = "1"
 "@
+    
+    # 创建或追加配置文件
+    if (-not (Test-Path $profilePath)) {
+        New-Item -Path $profilePath -ItemType File -Force | Out-Null
+        Write-Host "   创建配置文件: $profilePath" -F Gray
+    }
+    
+    Add-Content -Path $profilePath -Value "`n$cfg" -Encoding UTF8
+    Write-Host "✅ 配置已写入: $profilePath" -F Green
+}
+catch {
+    Write-Host "❌ 写入配置失败: $_" -F Red
+    Write-Host "   请手动添加以下内容到你的 PowerShell Profile:" -F Yellow
+    Write-Host $cfg -F Gray
+}
 
-if (-not (Test-Path $profilePath)) { New-Item -Path $profilePath -Type File -Force | Out-Null }
-Add-Content -Path $profilePath -Value "`n$cfg" -Encoding UTF8
-
+# 完成
 Write-Host "`n=============================================" -F Green
-Write-Host "✅ 安装完成！关闭终端重新输入 claude 即可使用" -F Green
+Write-Host "✅ 安装完成！" -F Green
 Write-Host "=============================================" -F Green
+Write-Host ""
+Write-Host "📋 后续步骤:" -F Cyan
+Write-Host "   1. 关闭并重新打开 PowerShell 终端" -F White
+Write-Host "   2. 输入命令: claude" -F White
+Write-Host "   3. 开始使用 Claude Code + DeepSeek!" -F White
+Write-Host ""
+Write-Host "🔗 参考资源:" -F Cyan
+Write-Host "   DeepSeek API: https://platform.deepseek.com" -F White
+Write-Host "   Claude CLI: https://claude.ai" -F White
+Write-Host ""
 pause
