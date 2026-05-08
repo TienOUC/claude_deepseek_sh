@@ -101,7 +101,7 @@ $profileContent = @"
 # 自动配置 Claude Code 接入 DeepSeek V4 Pro[1m]
 `$env:ANTHROPIC_BASE_URL = "$baseUrl"
 `$env:ANTHROPIC_AUTH_TOKEN = "$apiKey"
-`$env:ANTHROPIC_MODEL = '$modelName'
+`$env:ANTHROPIC_MODEL = "$modelName"
 `$env:API_TIMEOUT_MS = "$timeoutMs"
 `$env:CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = "1"
 "@
