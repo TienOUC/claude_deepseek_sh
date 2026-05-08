@@ -1,10 +1,8 @@
 @echo off
-title 正在启动 PowerShell 安装...
-mode con cols=80 lines=10
+setlocal
 cd /d "%~dp0"
-
-:: 强制用 PowerShell 运行（不会进入 cmd）
-powershell.exe -NoLogo -ExecutionPolicy Bypass -File "%~dp0windows_install.ps1"
-
+REM Launcher must stay ASCII-only: CMD uses system code page and breaks UTF-8.
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0windows_install.ps1"
+set ERR=%ERRORLEVEL%
 pause
-exit
+exit /b %ERR%
