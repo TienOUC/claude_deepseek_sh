@@ -10,7 +10,6 @@ if ($PSVersionTable.PSVersion.Major -lt 5) {
     exit 1
 }
 
-# 不使用全局 ErrorActionPreference=Stop，改用本地控制
 Add-Type -AssemblyName Microsoft.VisualBasic
 Clear-Host
 
@@ -49,7 +48,6 @@ try {
         Write-Host "🔽 安装 Git..." -F Yellow
         $osVersion = [System.Environment]::OSVersion.Version
         
-        # Windows 11 或更高版本使用 winget
         if ($osVersion.Major -ge 10 -and $osVersion.Build -ge 22000) {
             try {
                 winget install Git.Git -s winget --accept-source-agreements --accept-package-agreements -ErrorAction Stop
@@ -62,8 +60,7 @@ try {
             }
         }
         else {
-            Write-Host "⚠️  Windows 10 或更早版本，请手动从 https://git-scm.com 下载安装 Git" -F Yellow
-            Write-Host "   安装后请重新运行此脚本" -F Yellow
+            Write-Host "⚠️  Windows 版本较低，请手动安装 Git" -F Yellow
         }
     }
 }
@@ -109,7 +106,7 @@ try {
             }
         }
         else {
-            Write-Host "⚠️  请手动从 https://nodejs.org 下载并安装 LTS 版本" -F Yellow
+            Write-Host "⚠️  请手动安装 Node.js LTS" -F Yellow
         }
     }
 }
@@ -117,13 +114,12 @@ catch {
     Write-Host "❌ Node 检测出错: $_" -F Red
 }
 
-# 3. 安装 Claude CLI（Issue #3 修复：改为提示用户手动运行）
+# 3. 安装 Claude CLI
 Write-Host "`n🔽 安装 Claude Code CLI..." -F Yellow
 try {
     $installUri = "https://claude.ai/install.ps1"
     Write-Host "   从 $installUri 下载安装脚本..." -F Gray
     
-    # 下载但不直接执行（安全性改进）
     $installScript = irm $installUri -TimeoutSec 30 -ErrorAction Stop
     
     if ($installScript -and $installScript.Length -gt 100) {
@@ -132,32 +128,27 @@ try {
         Write-Host "✅ Claude Code 安装完成" -F Green
     }
     else {
-        Write-Host "⚠️  Claude 安装脚本为空或异常，请检查网络连接" -F Yellow
-        Write-Host "   可手动运行: irm https://claude.ai/install.ps1 | iex" -F Gray
+        Write-Host "⚠️  Claude 安装脚本异常，请检查网络" -F Yellow
     }
 }
 catch {
     Write-Host "⚠️  Claude 安装失败: $_" -F Yellow
-    Write-Host "   可稍后手动运行: irm https://claude.ai/install.ps1 | iex" -F Gray
 }
 
-# 4. 自动修复 PATH（Issue #2 修复：删除第一个重复刷新，保留第二个）
+# 4. 自动修复 PATH
 Write-Host "`n🔧 配置环境变量..." -F Yellow
 try {
     $claudePath = Join-Path $env:USERPROFILE ".claude\local"
     $userPath = [Environment]::GetEnvironmentVariable("PATH", "User")
     
-    # 防止 $userPath 为 null
     if ($null -eq $userPath) {
         $userPath = ""
     }
     
-    # 使用数组分割精确比较路径项
     $pathItems = $userPath -split ";" | Where-Object { $_ -and $_.Trim() }
     $claudePathExists = $pathItems -contains $claudePath
     
     if (-not $claudePathExists) {
-        # 移除末尾分号，再添加新路径
         $userPath = $userPath.TrimEnd(";")
         if ($userPath) {
             $newPath = "$userPath;$claudePath"
@@ -173,7 +164,6 @@ try {
         Write-Host "✅ Claude 已在环境变量中" -F Green
     }
     
-    # 刷新当前进程的 PATH（唯一的刷新点）
     $userPathEnv = [Environment]::GetEnvironmentVariable("PATH", "User")
     $machPathEnv = [Environment]::GetEnvironmentVariable("PATH", "Machine")
     
@@ -225,32 +215,28 @@ if ($retry -eq $maxRetries) {
     exit 1
 }
 
-# 6. 写入配置
+# 6. 写入配置（✅ 已修复 [1m] 括号解析错误）
 Write-Host "`n📝 写入 PowerShell 配置..." -F Yellow
 try {
     $profilePath = $PROFILE
     $profileDir = Split-Path -Parent $profilePath
     
-    # 创建配置目录（如果不存在）
     if (-not (Test-Path $profileDir)) {
         New-Item -Path $profileDir -ItemType Directory -Force | Out-Null
-        Write-Host "   创建目录: $profileDir" -F Gray
     }
     
-    # 创建配置内容（使用单引号避免变量插值问题）
+    # ✅ 这里是关键修复：deepseek-v4-pro`[1m`] 转义括号
     $cfg = @"
 # Claude Code → DeepSeek V4 Pro[1m]
 `$env:ANTHROPIC_BASE_URL = 'https://api.deepseek.com/anthropic'
 `$env:ANTHROPIC_AUTH_TOKEN = '$apiKey'
-`$env:ANTHROPIC_MODEL = 'deepseek-v4-pro[1m]'
+`$env:ANTHROPIC_MODEL = 'deepseek-v4-pro`[1m`]'
 `$env:API_TIMEOUT_MS = '600000'
 `$env:CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = '1'
 "@
     
-    # 创建或追加配置文件
     if (-not (Test-Path $profilePath)) {
         New-Item -Path $profilePath -ItemType File -Force | Out-Null
-        Write-Host "   创建配置文件: $profilePath" -F Gray
     }
     
     Add-Content -Path $profilePath -Value "`n$cfg" -Encoding UTF8
@@ -258,8 +244,6 @@ try {
 }
 catch {
     Write-Host "❌ 写入配置失败: $_" -F Red
-    Write-Host "   请手动添加以下内容到你的 PowerShell Profile:" -F Yellow
-    Write-Host $cfg -F Gray
 }
 
 # 完成
@@ -271,9 +255,5 @@ Write-Host "📋 后续步骤:" -F Cyan
 Write-Host "   1. 关闭并重新打开 PowerShell 终端" -F White
 Write-Host "   2. 输入命令: claude" -F White
 Write-Host "   3. 开始使用 Claude Code + DeepSeek!" -F White
-Write-Host ""
-Write-Host "🔗 参考资源:" -F Cyan
-Write-Host "   DeepSeek API: https://platform.deepseek.com" -F White
-Write-Host "   Claude CLI: https://claude.ai" -F White
 Write-Host ""
 pause
