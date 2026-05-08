@@ -1,12 +1,10 @@
 <#
 Claude Code + DeepSeek V4 Pro[1m] 全自动安装
 强制 PowerShell 运行 | 智能检测 Git/Node | 自动修复环境变量
-改进版：完整错误处理 + 多系统支持
+修复版 v2: 修正 5 个 Bug（ErrorActionPreference、PATH 检查、特殊符号、refreshenv）
 #>
 
-# 严格模式：捕获所有错误
-$ErrorActionPreference = "Stop"
-
+# 不使用全局 ErrorActionPreference=Stop，改用本地控制
 Add-Type -AssemblyName Microsoft.VisualBasic
 Clear-Host
 
@@ -23,7 +21,7 @@ $policy = Get-ExecutionPolicy -Scope CurrentUser
 if ($policy -eq "Restricted") {
     Write-Host "⚠️  当前执行策略为 Restricted，尝试修改..." -F Yellow
     try {
-        Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
+        Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force -ErrorAction Stop
         Write-Host "✅ 执行策略已修改为 RemoteSigned" -F Green
     }
     catch {
@@ -35,9 +33,11 @@ if ($policy -eq "Restricted") {
 
 # 1. 检测 Git
 Write-Host "`n🔍 检测 Git..." -F Yellow
+$gitInstalled = $false
 try {
     if (Get-Command git -ErrorAction SilentlyContinue) {
         Write-Host "✅ Git 已安装" -F Green
+        $gitInstalled = $true
     }
     else {
         Write-Host "🔽 安装 Git..." -F Yellow
@@ -46,11 +46,13 @@ try {
         # Windows 11 或更高版本使用 winget
         if ($osVersion.Major -ge 10 -and $osVersion.Build -ge 22000) {
             try {
-                winget install Git.Git -s winget --accept-source-agreements --accept-package-agreements
+                winget install Git.Git -s winget --accept-source-agreements --accept-package-agreements -ErrorAction Stop
                 Write-Host "✅ Git 已通过 winget 安装" -F Green
+                $gitInstalled = $true
             }
             catch {
-                Write-Host "⚠️  winget 安装失败，请手动从 https://git-scm.com 下载安装" -F Yellow
+                Write-Host "⚠️  winget 安装失败: $_" -F Yellow
+                Write-Host "   请手动从 https://git-scm.com 下载安装" -F Yellow
             }
         }
         else {
@@ -65,6 +67,7 @@ catch {
 
 # 2. 检测 Node
 Write-Host "`n🔍 检测 Node.js (最低版本: $nodeMinVer)..." -F Yellow
+$nodeInstalled = $false
 try {
     $needInstall = $true
     
@@ -76,6 +79,7 @@ try {
             if ($curr -ge $nodeMinVer) {
                 Write-Host "✅ Node 版本符合" -F Green
                 $needInstall = $false
+                $nodeInstalled = $true
             }
             else {
                 Write-Host "⚠️  Node 版本过低，需要更新..." -F Yellow
@@ -89,11 +93,13 @@ try {
         
         if ($osVersion.Major -ge 10 -and $osVersion.Build -ge 22000) {
             try {
-                winget install OpenJS.NodeJS.LTS -s winget --accept-source-agreements --accept-package-agreements
+                winget install OpenJS.NodeJS.LTS -s winget --accept-source-agreements --accept-package-agreements -ErrorAction Stop
                 Write-Host "✅ Node.js 已通过 winget 安装" -F Green
+                $nodeInstalled = $true
             }
             catch {
-                Write-Host "⚠️  winget 安装失败，请手动从 https://nodejs.org 下载安装" -F Yellow
+                Write-Host "⚠️  winget 安装失败: $_" -F Yellow
+                Write-Host "   请手动从 https://nodejs.org 下载安装" -F Yellow
             }
         }
         else {
@@ -105,11 +111,23 @@ catch {
     Write-Host "❌ Node 检测出错: $_" -F Red
 }
 
-# 刷新环境变量
+# 刷新环境变量（修复 Bug 4）
 Write-Host "`n🔄 刷新环境变量..." -F Yellow
-if (Get-Command refreshenv -ErrorAction SilentlyContinue) { 
-    refreshenv | Out-Null
+try {
+    $userPathEnv = [Environment]::GetEnvironmentVariable("PATH", "User")
+    $machPathEnv = [Environment]::GetEnvironmentVariable("PATH", "Machine")
+    
+    # 确保不为 null
+    if ($null -eq $userPathEnv) { $userPathEnv = "" }
+    if ($null -eq $machPathEnv) { $machPathEnv = "" }
+    
+    # 正确刷新当前进程的 PATH
+    $env:PATH = if ($userPathEnv) { $userPathEnv + ";" } else { "" }
+    $env:PATH += $machPathEnv
     Write-Host "✅ 环境变量已刷新" -F Green
+}
+catch {
+    Write-Host "⚠️  环境变量刷新失败: $_" -F Yellow
 }
 
 # 3. 安装 Claude CLI
@@ -132,7 +150,7 @@ catch {
     Write-Host "   请稍后手动运行: irm https://claude.ai/install.ps1 | iex" -F Gray
 }
 
-# 4. 自动修复 PATH
+# 4. 自动修复 PATH（修复 Bug 2 和 Bug 3）
 Write-Host "`n🔧 配置环境变量..." -F Yellow
 try {
     $claudePath = Join-Path $env:USERPROFILE ".claude\local"
@@ -143,18 +161,36 @@ try {
         $userPath = ""
     }
     
-    if (-not $userPath.Contains($claudePath)) {
-        [Environment]::SetEnvironmentVariable("PATH", "$userPath;$claudePath", "User")
+    # 修复 Bug 2: 使用数组分割精确比较路径项
+    $pathItems = $userPath -split ";" | Where-Object { $_ -and $_.Trim() }
+    $claudePathExists = $pathItems -contains $claudePath
+    
+    if (-not $claudePathExists) {
+        # 移除末尾分号，再添加新路径
+        $userPath = $userPath.TrimEnd(";")
+        if ($userPath) {
+            $newPath = "$userPath;$claudePath"
+        }
+        else {
+            $newPath = $claudePath
+        }
+        
+        [Environment]::SetEnvironmentVariable("PATH", $newPath, "User")
         Write-Host "✅ 已添加 Claude 到用户环境变量" -F Green
     }
     else {
         Write-Host "✅ Claude 已在环境变量中" -F Green
     }
     
-    # 刷新当前进程的 PATH
-    $machPath = [Environment]::GetEnvironmentVariable("PATH", "Machine")
-    if ($null -eq $machPath) { $machPath = "" }
-    $env:PATH = $userPath + ";" + $machPath
+    # 刷新当前进程的 PATH（修复 Bug 3）
+    $userPathEnv = [Environment]::GetEnvironmentVariable("PATH", "User")
+    $machPathEnv = [Environment]::GetEnvironmentVariable("PATH", "Machine")
+    
+    if ($null -eq $userPathEnv) { $userPathEnv = "" }
+    if ($null -eq $machPathEnv) { $machPathEnv = "" }
+    
+    $env:PATH = if ($userPathEnv) { $userPathEnv + ";" } else { "" }
+    $env:PATH += $machPathEnv
 }
 catch {
     Write-Host "❌ 环境变量配置失败: $_" -F Red
@@ -198,7 +234,7 @@ if ($retry -eq $maxRetries) {
     exit 1
 }
 
-# 6. 写入配置
+# 6. 写入配置（修复 Bug 5：处理特殊符号）
 Write-Host "`n📝 写入 PowerShell 配置..." -F Yellow
 try {
     $profilePath = $PROFILE
@@ -210,14 +246,14 @@ try {
         Write-Host "   创建目录: $profileDir" -F Gray
     }
     
-    # 创建配置内容
+    # 创建配置内容（使用单引号避免变量插值问题）
     $cfg = @"
 # Claude Code → DeepSeek V4 Pro[1m]
-`$env:ANTHROPIC_BASE_URL = "https://api.deepseek.com/anthropic"
-`$env:ANTHROPIC_AUTH_TOKEN = "$apiKey"
+`$env:ANTHROPIC_BASE_URL = 'https://api.deepseek.com/anthropic'
+`$env:ANTHROPIC_AUTH_TOKEN = '$apiKey'
 `$env:ANTHROPIC_MODEL = 'deepseek-v4-pro[1m]'
-`$env:API_TIMEOUT_MS = "600000"
-`$env:CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = "1"
+`$env:API_TIMEOUT_MS = '600000'
+`$env:CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = '1'
 "@
     
     # 创建或追加配置文件
