@@ -1,10 +1,6 @@
 <#
 Claude Code 全自动安装 + 自动适配DeepSeek V4 Pro[1m]
-特性：
-1. 智能检测 Git/Node 已安装且版本达标则跳过
-2. 自动修复 Claude 环境变量PATH，永久生效
-3. Windows 图形弹窗输入 DeepSeek API Key
-4. 支持任意目录存放，双击BAT即可运行
+修复版：解决乱码和括号不匹配问题
 #>
 Add-Type -AssemblyName Microsoft.VisualBasic
 Clear-Host
