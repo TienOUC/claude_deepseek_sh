@@ -4,6 +4,7 @@
 1. 登录：https://platform.deepseek.com 注册账号
 2. 进入「API Keys」→ 新建密钥
 3. 复制 sk-xxxxxx 格式密钥，在脚本执行过程中根据提示输入密钥，等待脚本执行完成即可
+4. 在充值页面按需充值
 
 # 2. 安装
 ##  2.1 MacOS

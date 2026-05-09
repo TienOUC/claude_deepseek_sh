@@ -1,5 +1,6 @@
 ﻿<#
-Claude Code + DeepSeek V4 Pro[1m] 全自动安装
+Claude Code + DeepSeek（Anthropic 兼容端）全自动安装
+配置项对齐：https://api-docs.deepseek.com/zh-cn/quick_start/agent_integrations/claude_code
 智能检测 Git/Node | 自动修复环境变量
 #>
 
@@ -301,12 +302,15 @@ try {
     
     # FIX: Using single quotes to prevent variable expansion, safe API Key escaping
     $cfg = @"
-# Claude Code -> DeepSeek V4 Pro[1m]
+# Claude Code -> DeepSeek（见 api-docs.deepseek.com Claude Code 接入）
 `$env:ANTHROPIC_BASE_URL = 'https://api.deepseek.com/anthropic'
 `$env:ANTHROPIC_AUTH_TOKEN = '$($apiKey -replace "'", "''")'
-`$env:ANTHROPIC_MODEL = 'deepseek-v4-pro`[1m`]'
-`$env:API_TIMEOUT_MS = '600000'
-`$env:CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = '1'
+`$env:ANTHROPIC_MODEL = 'deepseek-v4-pro[1m]'
+`$env:ANTHROPIC_DEFAULT_OPUS_MODEL = 'deepseek-v4-pro[1m]'
+`$env:ANTHROPIC_DEFAULT_SONNET_MODEL = 'deepseek-v4-pro[1m]'
+`$env:ANTHROPIC_DEFAULT_HAIKU_MODEL = 'deepseek-v4-flash'
+`$env:CLAUDE_CODE_SUBAGENT_MODEL = 'deepseek-v4-flash'
+`$env:CLAUDE_CODE_EFFORT_LEVEL = 'max'
 "@
     
     if (-not (Test-Path $profilePath)) {

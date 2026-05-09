@@ -2,7 +2,7 @@
 
 clear
 echo "============================================="
-echo "    Claude Code + DeepSeek V4 Pro 一键安装    "
+echo "  Claude Code + DeepSeek（官方 Claude 接入）  "
 echo "============================================="
 
 # 1. 安装 Homebrew 国内镜像
@@ -45,14 +45,18 @@ if [[ -z "$API_KEY" || "$API_KEY" != sk-* ]]; then
   exit 1
 fi
 
-# 5. 写入配置
+# 5. 写入配置（与 DeepSeek 文档一致）
+# https://api-docs.deepseek.com/zh-cn/quick_start/agent_integrations/claude_code
 CONFIG="
-# Claude Code -> DeepSeek V4 Pro[1m]
+# Claude Code -> DeepSeek
 export ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic
 export ANTHROPIC_AUTH_TOKEN=$API_KEY
 export ANTHROPIC_MODEL=deepseek-v4-pro[1m]
-export API_TIMEOUT_MS=600000
-export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
+export ANTHROPIC_DEFAULT_OPUS_MODEL=deepseek-v4-pro[1m]
+export ANTHROPIC_DEFAULT_SONNET_MODEL=deepseek-v4-pro[1m]
+export ANTHROPIC_DEFAULT_HAIKU_MODEL=deepseek-v4-flash
+export CLAUDE_CODE_SUBAGENT_MODEL=deepseek-v4-flash
+export CLAUDE_CODE_EFFORT_LEVEL=max
 "
 
 echo "$CONFIG" >> ~/.zshrc
@@ -60,5 +64,5 @@ source ~/.zshrc
 
 echo ""
 echo "✅ 安装完成！"
-echo "🤖 模型：deepseek-v4-pro[1m]"
-echo "📌 直接输入：claude  即可使用！"
+echo "🤖 主模型：deepseek-v4-pro[1m] | 轻量/Haiku/子代理：deepseek-v4-flash"
+echo "📌 在项目目录执行：claude"
